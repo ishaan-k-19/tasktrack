@@ -539,10 +539,30 @@ const Canvas = forwardRef((props, ref) => {
   const lastDist = useRef(0);
   const drawStartPos = useRef(null);
 
-  const [canvasSize] = useState({
-    width: 900,
-    height: 1200,
+  // Dynamic canvas size based on container
+  const [canvasSize, setCanvasSize] = useState({
+    width: 1200,
+    height: 1600,
   });
+
+  // Update canvas size on mount and resize
+  useEffect(() => {
+    const updateCanvasSize = () => {
+      if (containerRef.current) {
+        const containerWidth = containerRef.current.clientWidth;
+        // Use container width or minimum of 1200px for desktop, ensuring full width usage
+        const width = Math.max(containerWidth, 1200);
+        setCanvasSize({
+          width: width,
+          height: Math.max(1600, width * 1.2), // Maintain aspect ratio
+        });
+      }
+    };
+
+    updateCanvasSize();
+    window.addEventListener("resize", updateCanvasSize);
+    return () => window.removeEventListener("resize", updateCanvasSize);
+  }, []);
 
   // Detect mobile on mount
   useEffect(() => {
