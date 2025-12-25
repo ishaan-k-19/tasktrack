@@ -355,7 +355,7 @@ const NoteItem = ({
                 </li>
                 <li className="mr-2">
                   <button
-                    className={`md:inline-block p-4 border-b-2 rounded-t-lg hidden ${
+                    className={`inline-block p-4 border-b-2 rounded-t-lg ${
                       activeTab === "Draw"
                         ? "text-blue-400 border-blue-400"
                         : "text-neutral-200 hover:text-neutral-300 border-transparent hover:border-neutral-300"
@@ -434,8 +434,10 @@ const NoteItem = ({
                   </div>
                   <div
                     style={{
-                      maxHeight: "60vh",
-                      overflowY: "hidden",
+                      maxHeight: "70vh",
+                      overflowY: "auto",
+                      overflowX: "auto",
+                      WebkitOverflowScrolling: "touch",
                       border: "1px solid #e5e7eb",
                       backgroundColor: "#f9fafb",
                       borderRadius: "8px",
@@ -444,7 +446,7 @@ const NoteItem = ({
                     <Canvas
                       ref={canvasRef}
                       key={noteData.id || "new"}
-                      initialState={canvasState.lines}
+                      initialState={canvasState?.lines || canvasState?.objects || []}
                     />
                   </div>
                 </>

@@ -101,7 +101,7 @@ const api = createApi({
         }),
         updatePassword: builder.mutation({
             query: ({ oldPassword, newPassword }) => ({
-                url: 'updatePassword',
+                url: 'updatepassword',
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: { oldPassword, newPassword },
@@ -129,7 +129,7 @@ const api = createApi({
         }),
         resetPassword: builder.mutation({
             query: ({ otp, newPassword }) => ({
-                url: 'resetPassword',
+                url: 'resetpassword',
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: { otp, newPassword },

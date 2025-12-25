@@ -1,0 +1,152 @@
+name: Build and Deploy Vite React App
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Vite app
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ secrets.VPS_PORT || 22 }} -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Create deployment directory on VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p $VPS_PORT -o ConnectTimeout=60 $VPS_USERNAME@$VPS_HOST \
+            "mkdir -p /home/deploy/apps/tasktrack/dist /home/deploy/apps/tasktrack/logs"
+
+      - name: Deploy files to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+        run: |
+          sync_with_retry() {
+            local src=$1
+            local dest=$2
+            local max_attempts=3
+
+            for i in $(seq 1 $max_attempts); do
+              echo "Syncing $src - Attempt $i of $max_attempts..."
+              if rsync -avz --delete --timeout=300 --partial --progress \
+                -e "ssh -i ~/.ssh/deploy_key -p $VPS_PORT -o ConnectTimeout=60 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=no" \
+                "$src" "$VPS_USERNAME@$VPS_HOST:$dest"; then
+                echo "✓ Successfully synced $src"
+                return 0
+              fi
+
+              if [ $i -lt $max_attempts ]; then
+                echo "⚠ Attempt $i failed, waiting 30 seconds..."
+                sleep 30
+              fi
+            done
+
+            echo "✗ Failed to sync $src after $max_attempts attempts"
+            return 1
+          }
+
+          # Sync dist directory
+          sync_with_retry "dist/" "/home/deploy/apps/tasktrack/dist/" || exit 1
+
+          # Sync package files
+          sync_with_retry "package.json" "/home/deploy/apps/tasktrack/" || exit 1
+          sync_with_retry "package-lock.json" "/home/deploy/apps/tasktrack/" || exit 1
+
+          # Sync ecosystem config
+          sync_with_retry "ecosystem.config.js" "/home/deploy/apps/tasktrack/" || exit 1
+
+      - name: Install serve and restart on VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p $VPS_PORT -o ConnectTimeout=60 $VPS_USERNAME@$VPS_HOST << 'EOF'
+            cd /home/deploy/apps/tasktrack
+
+            echo "=== Installing serve globally ==="
+            npm install -g serve
+
+            echo ""
+            echo "=== Restarting application ==="
+
+            # Stop and delete if exists
+            if pm2 describe tasktrack > /dev/null 2>&1; then
+              echo "Stopping existing process..."
+              pm2 stop tasktrack
+              pm2 delete tasktrack
+            fi
+
+            # Start with ecosystem config
+            echo "Starting with ecosystem.config.js..."
+            pm2 start ecosystem.config.js
+
+            # Save PM2 configuration
+            pm2 save
+
+            # Wait for startup
+            sleep 3
+
+            echo ""
+            echo "=== Application Status ==="
+            pm2 status tasktrack
+
+            echo ""
+            echo "=== Recent Logs ==="
+            pm2 logs tasktrack --lines 20 --nostream
+          EOF
+
+      - name: Verify deployment
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p $VPS_PORT $VPS_USERNAME@$VPS_HOST << 'EOF'
+            echo "=== Deployment Verification ==="
+            echo ""
+            echo "Files present:"
+            ls -lh /home/deploy/apps/tasktrack/
+            echo ""
+            echo "Dist contents:"
+            ls -lh /home/deploy/apps/tasktrack/dist/
+            echo ""
+            echo "PM2 process details:"
+            pm2 info tasktrack | grep -E '(status|uptime|restarts|cpu|memory)'
+            echo ""
+            echo "Port 3006 listening:"
+            netstat -tuln | grep 3006 || ss -tuln | grep 3006
+          EOF
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

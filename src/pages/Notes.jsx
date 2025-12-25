@@ -166,7 +166,7 @@ const Notes = () => {
                     Type
                   </button>
                 </li>
-                <li className="mr-2 hidden md:block">
+                <li className="mr-2">
                   <button
                     className={`inline-block p-4 border-b-2 rounded-t-lg ${
                       activeTab === "Draw"
@@ -238,8 +238,10 @@ const Notes = () => {
                   </div>
                   <div
                     style={{
-                      maxHeight: "60vh",
-                      overflowY: "hidden",
+                      maxHeight: "70vh",
+                      overflowY: "auto",
+                      overflowX: "auto",
+                      WebkitOverflowScrolling: "touch",
                       border: "1px solid #e5e7eb",
                       backgroundColor: "#f9fafb",
                       borderRadius: "8px",
